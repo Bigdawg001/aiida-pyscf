@@ -37,6 +37,7 @@ Source = 'https://github.com/microsoft/aiida-pyscf'
 
 [project.entry-points.'aiida.calculations']
 'pyscf.base' = 'aiida_pyscf.calculations.base:PyscfCalculation'
+'pyscf.cudft' = 'aiida_pyscf.calculations.cudft:CudftCalculation'
 
 [project.entry-points.'aiida.parsers']
 'pyscf.base' = 'aiida_pyscf.parsers.base:PyscfParser'

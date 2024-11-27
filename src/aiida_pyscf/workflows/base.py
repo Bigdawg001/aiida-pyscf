@@ -29,6 +29,11 @@ class PyscfBaseWorkChain(BaseRestartWorkChain):
         spec.exit_code(
             300, 'ERROR_UNRECOVERABLE_FAILURE', message='The calculation failed with an unrecoverable error.'
         )
+        spec.exit_code(
+            310,
+            'ERROR_NO_CHECKPOINT_TO_RESTART',
+            message='The calculation failed and did not retrieve a checkpoint file from which can be restarted.',
+        )
 
     def setup(self):
         """Call the `setup` of the `BaseRestartWorkChain` and then create the inputs dictionary in `self.ctx.inputs`.
@@ -58,3 +63,83 @@ class PyscfBaseWorkChain(BaseRestartWorkChain):
         if node.is_failed and node.exit_status < 400:
             self.report_error_handled(node, 'unrecoverable error, aborting...')
             return ProcessHandlerReport(True, self.exit_codes.ERROR_UNRECOVERABLE_FAILURE)
+
+    @process_handler(
+        priority=500,
+        exit_codes=[
+            PyscfCalculation.exit_codes.ERROR_IONIC_CONVERGENCE_NOT_REACHED,  # type: ignore[union-attr]
+        ],
+    )
+    def handle_ionic_convergence_not_reached(self, node):
+        """Handle ``ERROR_IONIC_CONVERGENCE_NOT_REACHED`` error.
+
+        Simply restart the calculation using the ``checkpoint`` and ``structure`` outputs of the failed calculation as
+        starting point.
+        """
+        self.ctx.inputs.checkpoint = node.outputs.checkpoint
+
+        if 'structure' in node.outputs:
+            self.ctx.inputs.structure = node.outputs.structure
+        elif 'trajectory' in node.outputs:
+            structure = node.outputs.trajectory.get_step_structure(index=-1)
+            structure.pbc = self.ctx.inputs.structure.pbc
+            structure.store()
+            self.ctx.inputs.structure = structure
+        else:
+            self.logger.warning('no output `structure` or `trajectory`: restarting from input structure.')
+
+        self.report_error_handled(node, 'restarting from the last checkpoint and structure.')
+        return ProcessHandlerReport(True)
+
+    @process_handler(
+        priority=410,
+        exit_codes=[
+            PyscfCalculation.exit_codes.ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED,  # type: ignore[union-attr]
+        ],
+    )
+    def handle_electronic_convergence_not_reached(self, node):
+        """Handle ``ERROR_ELECTRONIC_CONVERGENCE_NOT_REACHED`` error.
+
+        Simply restart the calculation using the ``checkpoint`` of the failed calculation as starting point.
+        """
+        self.ctx.inputs.checkpoint = node.outputs.checkpoint
+        self.report_error_handled(node, 'restarting from the last checkpoint.')
+        return ProcessHandlerReport(True)
+
+    @process_handler(
+        priority=110,
+        exit_codes=[
+            PyscfCalculation.exit_codes.ERROR_SCHEDULER_NODE_FAILURE,  # type: ignore[union-attr]
+        ],
+    )
+    def handle_scheduler_node_failure(self, node):
+        """Handle ``ERROR_SCHEDULER_NODE_FAILURE`` error.
+
+        Simply restart the calculation using the last available ``checkpoint``, which is the output checkpoint of the
+        failed calculation if available, or the previous checkpoint that was used in the inputs.
+        """
+        if 'checkpoint' in node.outputs:
+            self.ctx.inputs.checkpoint = node.outputs.checkpoint
+
+        self.report_error_handled(node, 'restarting from the last checkpoint.')
+        return ProcessHandlerReport(True)
+
+    @process_handler(
+        priority=100,
+        exit_codes=[
+            PyscfCalculation.exit_codes.ERROR_SCHEDULER_OUT_OF_WALLTIME,  # type: ignore[union-attr]
+        ],
+    )
+    def handle_out_of_walltime(self, node):
+        """Handle ``ERROR_SCHEDULER_OUT_OF_WALLTIME`` error.
+
+        Simply restart the calculation using the ``checkpoint`` if it was retrieved, otherwise abort since having to
+        restart from scratch with the same walltime is likely going to fail again.
+        """
+        if 'checkpoint' not in node.outputs:
+            self.report_error_handled(node, 'aborting because the failed calculation does not provide a checkpoint.')
+            return ProcessHandlerReport(True, self.exit_codes.ERROR_NO_CHECKPOINT_TO_RESTART)
+
+        self.ctx.inputs.checkpoint = node.outputs.checkpoint
+        self.report_error_handled(node, 'restarting from the last checkpoint.')
+        return ProcessHandlerReport(True)

@@ -1,4 +1,18 @@
-results['timings']['total'] = time.perf_counter() - time_start
+# Section: Results
+def write_results_and_exit(results):
+    import json
+    import pickle
+    import sys
 
-with open('{{ results.filename_output }}', 'w') as handle:
-    json.dump(results, handle)
+    results['timings']['total'] = time.perf_counter() - time_start
+
+    with open('{{ results.filename_output }}', 'w') as handle:
+        json.dump(results, handle)
+
+    {% if results.pickle_model %}
+    with open('{{ results.filename_model }}', 'wb') as handle:
+        pickle.dump(mean_field_run, handle)
+
+    {% endif %}
+
+    sys.exit(0)

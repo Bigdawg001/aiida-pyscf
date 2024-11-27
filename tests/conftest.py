@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-# pylint: disable=redefined-outer-name
 """Module with test fixtures."""
 from __future__ import annotations
 
 import collections
 import pathlib
 
+import pytest
 from aiida.common.folders import Folder
 from aiida.common.links import LinkType
 from aiida.engine.utils import instantiate_process
 from aiida.manage.manager import get_manager
-from aiida.orm import CalcJobNode, Dict, FolderData, StructureData
+from aiida.orm import CalcJobNode, Dict, FolderData, StructureData, TrajectoryData
 from aiida.plugins import ParserFactory, WorkflowFactory
 from ase.build import molecule
 from plumpy import ProcessState
-import pytest
 
-pytest_plugins = ['aiida.manage.tests.pytest_fixtures']  # pylint: disable=invalid-name
+pytest_plugins = ['aiida.manage.tests.pytest_fixtures']
 
 
 @pytest.fixture
@@ -69,7 +68,7 @@ def generate_calc_job(tmp_path):
 
 
 @pytest.fixture
-def generate_calc_job_node(filepath_tests, aiida_computer_local):
+def generate_calc_job_node(filepath_tests, aiida_computer_local, tmp_path):
     """Create and return a :class:`aiida.orm.CalcJobNode` instance."""
 
     def flatten_inputs(inputs, prefix=''):
@@ -82,7 +81,9 @@ def generate_calc_job_node(filepath_tests, aiida_computer_local):
                 flat_inputs.append((prefix + key, value))
         return flat_inputs
 
-    def factory(entry_point: str, test_name: str | None = None, inputs: dict = None):
+    def factory(
+        entry_point: str, test_name: str, inputs: dict | None = None, retrieve_temporary_list: list[str] | None = None
+    ):
         """Create and return a :class:`aiida.orm.CalcJobNode` instance."""
         node = CalcJobNode(computer=aiida_computer_local(), process_type=f'aiida.calculations:{entry_point}')
 
@@ -93,13 +94,20 @@ def generate_calc_job_node(filepath_tests, aiida_computer_local):
 
         node.store()
 
-        if test_name:
-            filepath_retrieved = filepath_tests / 'parsers' / 'fixtures' / entry_point.split('.')[-1] / test_name
+        filepath_retrieved = filepath_tests / 'parsers' / 'fixtures' / entry_point.split('.')[-1] / test_name
 
-            retrieved = FolderData()
-            retrieved.base.repository.put_object_from_tree(filepath_retrieved)
-            retrieved.base.links.add_incoming(node, link_type=LinkType.CREATE, link_label='retrieved')
-            retrieved.store()
+        retrieved = FolderData()
+        retrieved.put_object_from_tree(filepath_retrieved)
+        retrieved.base.links.add_incoming(node, link_type=LinkType.CREATE, link_label='retrieved')
+        retrieved.store()
+
+        if retrieve_temporary_list:
+            for pattern in retrieve_temporary_list:
+                for filename in filepath_retrieved.glob(pattern):
+                    filepath = tmp_path / filename.relative_to(filepath_retrieved)
+                    filepath.write_bytes(filename.read_bytes())
+
+            return node, tmp_path
 
         return node
 
@@ -134,19 +142,36 @@ def generate_structure():
 
 
 @pytest.fixture
+def generate_trajectory(generate_structure):
+    """Return factory to generate a ``TrajectoryData`` instance."""
+
+    def factory(formula: str = 'H2O') -> TrajectoryData:
+        """Generate a ``TrajectoryData`` instance."""
+        return TrajectoryData(structurelist=[generate_structure(formula=formula)])
+
+    return factory
+
+
+@pytest.fixture
 def generate_workchain_pyscf_base(generate_workchain, generate_inputs_pyscf, generate_calc_job_node):
     """Return a factory to generate a :class:`aiida_pyscf.workflows.base.PyscfBaseWorkChain` instance."""
 
-    def factory(inputs=None, exit_code=None):
+    def factory(inputs=None, exit_code=None, outputs=None):
         """Generate a :class:`aiida_pyscf.workflows.base.PyscfBaseWorkChain` instance.``.
 
-        :param inputs: inputs for the ``PyscfBaseWorkChain``.
-        :param exit_code: exit code for the ``PyscfCalculation``.
+        :param inputs: Inputs for the ``PyscfBaseWorkChain``.
+        :param exit_code: Exit code to set on the ``PyscfCalculation`` node.
+        :param outputs: Optional outputs to set on the ``PyscfCalculation`` node.
         """
         process = generate_workchain('pyscf.base', {'pyscf': inputs or generate_inputs_pyscf()})
-        node = generate_calc_job_node('pyscf.base', inputs={'parameters': Dict()})
+        node = generate_calc_job_node('pyscf.base', 'default', inputs={'parameters': Dict()})
         process.ctx.iteration = 1
         process.ctx.children = [node]
+
+        if outputs:
+            for key, value in outputs.items():
+                value.base.links.add_incoming(node, link_label=key, link_type=LinkType.CREATE)
+                value.store()
 
         if exit_code is not None:
             node.set_process_state(ProcessState.FINISHED)

@@ -1,3 +1,62 @@
+energies:
+- -30.39241253652082
+- -30.406779876344842
+- -30.408872159833294
+- -30.40888413284324
+parameters:
+  geometry_optimizer:
+    is_converged: true
+  mean_field:
+    forces:
+    - - -0.0
+      - -0.0
+      - -1.288777401443684
+    - - -0.0
+      - -0.0
+      - 1.288777401443684
+    forces_units: eV/Å
+    is_converged: true
+    molecular_orbitals:
+      energies:
+      - -15.775220387811203
+      - 18.342663693892
+      labels:
+      - 0 H 1s
+      - 1 H 1s
+      occupations:
+      - 2.0
+      - 0.0
+    total_energy: -30.39241247445083
+    total_energy_units: eV
+  timings:
+    geometry_optimizer: 0.37188204899575794
+    mean_field: 0.07242159199813614
+    total: 0.9836381720015197
+positions:
+- 0.0
+- 0.0
+- 0.368583
+- 0.0
+- 0.0
+- -0.368583
+- 0.0
+- 0.0
+- 0.3518054027
+- 0.0
+- 0.0
+- -0.3518054027
+- 0.0
+- 0.0
+- 0.3564447343
+- 0.0
+- 0.0
+- -0.3564447343
+- 0.0
+- 0.0
+- 0.3561234505
+- 0.0
+- 0.0
+- -0.3561234505
 structure:
   cell:
   - - 0.0
@@ -22,11 +81,27 @@ structure:
   sites:
   - kind_name: H
     position:
-    - 5.385126195468157e-16
-    - 1.1867273705450172e-15
-    - -0.6939768717171151
+    - 0.0
+    - 0.0
+    - 0.3561234504810643
   - kind_name: H
     position:
-    - -1.0821697758941843e-15
-    - -1.5567727867904911e-15
-    - 0.6939768717171285
+    - 0.0
+    - 0.0
+    - -0.3561234504810643
+trajectory:
+  array|cells:
+  - 4
+  - 3
+  - 3
+  array|energies:
+  - 4
+  array|positions:
+  - 4
+  - 2
+  - 3
+  array|steps:
+  - 4
+  symbols:
+  - H
+  - H
